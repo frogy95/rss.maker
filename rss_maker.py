@@ -6,10 +6,12 @@
 # 6. GitHub에 올리기
 import sqlite3
 import PyRSS2Gen
+import datetime
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 
-BASEPATH = 'c:\\test\\'
+BASEPATH = 'd:\\service\\legislation-service\\rss\\'
+#BASEPATH = 'c:\\test\\'
 
 
 def dict_factory(cursor, row):
@@ -84,9 +86,8 @@ class Issues:
 class IssuesEpeople(Issues):
 
     def __init__(self, _link):
-        self.title = "전자공청회"
-        self.link = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&amp;" \
-                    + "channel=1352000&amp;menu_code=PO002"
+        self.title = "publichearing"
+        self.link = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
         self.description = "보건복지부 입법/행정예고 전자공청회"
         main_content = _link[2].find('a')
         self.item_title = main_content.get('title')
@@ -95,14 +96,13 @@ class IssuesEpeople(Issues):
         self.item_description = "기간 {0}".format(_link[4].text)
         self.item_author = _link[3].text.strip('\r').strip('\n').strip('\t').strip()
         self.item_category = ""
-        self.item_pubDate = ""
+        self.item_pubDate = datetime.datetime.utcnow()
         self.item_guid = _link[0].text
         return
 
 
 def get_new_articles(db, title):
-    url = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?" \
-          + "anc_code=1352000&amp;channel=1352000&amp;menu_code=PO002"
+    url = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
     html = urlopen(url)
     bs_object = BeautifulSoup(html, "html.parser")
 
@@ -126,7 +126,7 @@ def get_new_articles(db, title):
     return filter(lambda x: int(x.item_guid) > max_id, articles)
 
 
-def publish_rss(db, title):
+def publish_rss(db, title, sender):
     cur = db.conn.cursor()
 
     cur.execute("select * from rss where title = '{0}' order by id desc limit 20;".format(title))
@@ -135,8 +135,9 @@ def publish_rss(db, title):
 
     for row in cur.fetchall():
         if rss.title == "":
-            rss.title = row['title']
+            rss.title = sender
             rss.link = row['link']
+            rss.lastBuildDate = datetime.datetime.utcnow()
             rss.description = row['description']
 
         item = PyRSS2Gen.RSSItem(
@@ -151,11 +152,11 @@ def publish_rss(db, title):
 
         rss.items.append(item)
 
-    rss.write_xml(open(BASEPATH + 'rss_{0}.rss'.format(title), 'w'), encoding='UTF-8')
+    rss.write_xml(open(BASEPATH + 'rss_{0}.xml'.format(title), 'w'), encoding="EUC-KR")
 
 
 def save_crawling_epeople(db):
-    new_articles = get_new_articles(db, '전자공청회')
+    new_articles = get_new_articles(db, 'publichearing')
 
     return new_articles
 
@@ -170,7 +171,7 @@ def make_rss():
         for article in articles:
             db.insert(article)
 
-    publish_rss(db, '전자공청회')
+    publish_rss(db, 'publichearing', 'RSS 뉴스피드- 보건복지부 전자공청회')
     db.conn.close()
 
 
