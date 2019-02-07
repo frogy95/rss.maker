@@ -10,8 +10,8 @@ import datetime
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 
-BASEPATH = 'd:\\service\\legislation-service\\rss\\'
-#BASEPATH = 'c:\\test\\'
+#BASEPATH = 'd:\\service\\legislation-service\\rss\\'
+BASEPATH = 'c:\\test\\'
 
 
 def dict_factory(cursor, row):
@@ -84,7 +84,6 @@ class Issues:
 
 
 class IssuesEpeople(Issues):
-
     def __init__(self, _link):
         self.title = "publichearing"
         self.link = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
@@ -101,17 +100,36 @@ class IssuesEpeople(Issues):
         return
 
 
-def get_new_articles(db, title):
-    url = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
+class IssuesNhicLibrary(Issues):
+    def __init__(self, _link):
+        self.title = "nhic_library"
+        self.link = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
+        self.description = "건강보험공단 검진 공지사항"
+        main_content = _link[1].find('a')
+        self.item_title = _link[1].text.strip('\r').strip('\n').strip('\t').strip()
+        self.item_link = "http://sis.nhis.or.kr/ggoz101_r03.do?ITF_TYPE=R&ARTI_NO={0}&BLBD_TYPE2={1}".format(main_content.get('onclick')[21:25], '00')
+        self.item_description = "공지일자: {0}".format(_link[3].text)
+        self.item_author = _link[2].text.strip('\r').strip('\n').strip('\t').strip()
+        self.item_category = ""
+        self.item_pubDate = datetime.datetime.utcnow()
+        self.item_guid = main_content.get('onclick')[21:25]
+        return
+
+
+def get_new_articles(db, url, title, parser):
     html = urlopen(url)
     bs_object = BeautifulSoup(html, "html.parser")
 
+    articles = parser(bs_object)
+    max_id = db.get_max_id(title)
+
+    return filter(lambda x: int(x.item_guid) > max_id, articles)
+
+
+def parser_publichearing(bs_object):
+    articles = ()
     table = bs_object.body.find('table', summary="전자공청회 목록 - 번호,진행상태,제목,발제자,기간")
     rows = table.find_all('tr')
-    max_id = db.get_max_id(title)
-    print(max_id)
-
-    articles = ()
 
     for row in reversed(rows):
         cols = row.find_all('td')
@@ -123,7 +141,25 @@ def get_new_articles(db, title):
         if issue.item_guid != "":
             articles += (issue,)
 
-    return filter(lambda x: int(x.item_guid) > max_id, articles)
+    return articles
+
+
+def parser_nhic_library(bs_object):
+    articles = ()
+    table = bs_object.body.find('table', summary='게시판')
+    rows = table.find_all('tr')
+
+    for row in reversed(rows):
+        cols = row.find_all('td')
+        if len(cols) == 0:
+            continue
+
+        issue = IssuesNhicLibrary(cols)
+
+        if issue.item_guid != "":
+            articles += (issue,)
+
+    return articles
 
 
 def publish_rss(db, title, sender):
@@ -156,7 +192,17 @@ def publish_rss(db, title, sender):
 
 
 def save_crawling_epeople(db):
-    new_articles = get_new_articles(db, 'publichearing')
+    new_articles = get_new_articles(db, 'https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002',
+                                    'publichearing',
+                                    parser_publichearing)
+
+    return new_articles
+
+
+def save_crawling_nhic_library(db):
+    new_articles = get_new_articles(db, 'http://sis.nhis.or.kr/ggoz101_r01.do?BLBD_TYPE=00&amp;reqUrl=ggoz101m01',
+                                    'nhic_library',
+                                    parser_nhic_library)
 
     return new_articles
 
@@ -166,12 +212,14 @@ def make_rss():
 
     new_articles = ()
     new_articles += (save_crawling_epeople(db), )
+    new_articles += (save_crawling_nhic_library(db),)
 
     for articles in new_articles:
         for article in articles:
             db.insert(article)
 
     publish_rss(db, 'publichearing', 'RSS 뉴스피드- 보건복지부 전자공청회')
+    publish_rss(db, 'nhic_library', 'RSS 뉴스피드- 건강보험공단 검진 공지사항')
     db.conn.close()
 
 
