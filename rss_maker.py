@@ -10,8 +10,8 @@ import datetime
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 
-#BASEPATH = 'd:\\service\\legislation-service\\rss\\'
-BASEPATH = 'c:\\test\\'
+BASEPATH = 'd:\\service\\legislation-service\\rss\\'
+#BASEPATH = 'c:\\test\\'
 
 
 def dict_factory(cursor, row):
@@ -103,7 +103,7 @@ class IssuesEpeople(Issues):
 class IssuesNhicLibrary(Issues):
     def __init__(self, _link):
         self.title = "nhic_library"
-        self.link = "https://www.epeople.go.kr/jsp/user/frame/po/policy/UPoFrPolicyList.jsp?anc_code=1352000&channel=1352000;menu_code=PO002"
+        self.link = ""
         self.description = "건강보험공단 검진 공지사항"
         main_content = _link[1].find('a')
         self.item_title = _link[1].text.strip('\r').strip('\n').strip('\t').strip()
